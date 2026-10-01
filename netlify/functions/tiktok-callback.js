@@ -114,11 +114,14 @@ exports.handler = async (event) => {
         <p>Токены не отображаются на этой странице.</p>
       `
     };
-  } catch (error) {
+    } catch (error) {
+    console.error("Token storage error:", error);
+
     return {
       statusCode: 500,
-      headers: { "Content-Type": "text/html; charset=UTF-8" },
-      body: "<h1>Server error</h1><p>Token storage failed.</p>"
+      headers: {
+        "Content-Type": "text/html; charset=UTF-8"
+      },
+      body: `<h1>Server error</h1><p>Token storage failed.</p><p>${error.message || "Unknown error"}</p>`
     };
   }
-};
