@@ -3,6 +3,7 @@ const { getStore } = require("@netlify/blobs");
 exports.handler = async (event) => {
   const params = event.queryStringParameters || {};
 
+  // TikTok returned an authorization error
   if (params.error) {
     return {
       statusCode: 400,
@@ -13,16 +14,19 @@ exports.handler = async (event) => {
     };
   }
 
+  // Authorization code is required
   if (!params.code) {
     return {
       statusCode: 400,
       headers: {
         "Content-Type": "text/html; charset=UTF-8"
       },
-      body: "<h1>TikTok OAuth callback</h1><p>Authorization code was not provided.</p>"
+      body:
+        "<h1>TikTok OAuth callback</h1><p>Authorization code was not provided.</p>"
     };
   }
 
+  // Read OAuth state from cookie
   const cookies = event.headers.cookie || event.headers.Cookie || "";
 
   const stateCookie = cookies
@@ -31,9 +35,12 @@ exports.handler = async (event) => {
     .find((item) => item.startsWith("tiktok_oauth_state="));
 
   const savedState = stateCookie
-    ? decodeURIComponent(stateCookie.substring("tiktok_oauth_state=".length))
+    ? decodeURIComponent(
+        stateCookie.substring("tiktok_oauth_state=".length)
+      )
     : null;
 
+  // Protect against forged OAuth callbacks
   if (!params.state || !savedState || params.state !== savedState) {
     return {
       statusCode: 400,
@@ -50,17 +57,20 @@ exports.handler = async (event) => {
   const redirectUri =
     "https://imaginative-paprenjak-69aeb4.netlify.app/.netlify/functions/tiktok-callback";
 
+  // Check TikTok credentials
   if (!clientKey || !clientSecret) {
     return {
       statusCode: 500,
       headers: {
         "Content-Type": "text/html; charset=UTF-8"
       },
-      body: "<h1>Server configuration error</h1><p>TikTok credentials are not configured.</p>"
+      body:
+        "<h1>Server configuration error</h1><p>TikTok credentials are not configured.</p>"
     };
   }
 
   try {
+    // Exchange TikTok authorization code for tokens
     const body = new URLSearchParams({
       client_key: clientKey,
       client_secret: clientSecret,
@@ -83,6 +93,7 @@ exports.handler = async (event) => {
 
     const data = await response.json();
 
+    // TikTok token exchange failed
     if (!response.ok || data.error) {
       return {
         statusCode: 400,
@@ -97,8 +108,14 @@ exports.handler = async (event) => {
       };
     }
 
-    const store = getStore("tiktok-tokens");
+    // Open Netlify Blobs store using the current Netlify site
+    // and the server-side Netlify Personal Access Token.
+    const store = getStore("tiktok-tokens", {
+      siteID: process.env.SITE_ID,
+      token: process.env.NETLIFY_AUTH_TOKEN
+    });
 
+    // Store TikTok credentials securely on the server.
     await store.setJSON(`user-${data.open_id}`, {
       open_id: data.open_id,
       access_token: data.access_token,
@@ -109,6 +126,7 @@ exports.handler = async (event) => {
       saved_at: new Date().toISOString()
     });
 
+    // Delete the temporary OAuth state cookie.
     return {
       statusCode: 200,
       headers: {
