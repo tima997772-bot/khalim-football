@@ -1,4 +1,4 @@
-const crypto = require("crypto");
+const { getStore } = require("@netlify/blobs");
 
 exports.handler = async (event) => {
   const params = event.queryStringParameters || {};
@@ -16,6 +16,25 @@ exports.handler = async (event) => {
       statusCode: 400,
       headers: { "Content-Type": "text/html; charset=UTF-8" },
       body: "<h1>TikTok OAuth callback</h1><p>Authorization code was not provided.</p>"
+    };
+  }
+
+  const cookies = event.headers.cookie || event.headers.Cookie || "";
+
+  const stateCookie = cookies
+    .split(";")
+    .map((item) => item.trim())
+    .find((item) => item.startsWith("tiktok_oauth_state="));
+
+  const savedState = stateCookie
+    ? decodeURIComponent(stateCookie.split("=")[1])
+    : null;
+
+  if (!params.state || !savedState || params.state !== savedState) {
+    return {
+      statusCode: 400,
+      headers: { "Content-Type": "text/html; charset=UTF-8" },
+      body: "<h1>OAuth security error</h1><p>Invalid OAuth state.</p>"
     };
   }
 
@@ -63,20 +82,35 @@ exports.handler = async (event) => {
         body: `
           <h1>TikTok token exchange error</h1>
           <p>${data.error || "unknown_error"}</p>
-          <p>${data.error_description || data.error_description || "Token exchange failed."}</p>
+          <p>${data.error_description || "Token exchange failed."}</p>
         `
       };
     }
 
+    const store = getStore("tiktok-tokens");
+
+    await store.setJSON(`user-${data.open_id}`, {
+      open_id: data.open_id,
+      access_token: data.access_token,
+      refresh_token: data.refresh_token,
+      expires_in: data.expires_in,
+      refresh_expires_in: data.refresh_expires_in,
+      scope: data.scope,
+      saved_at: new Date().toISOString()
+    });
+
     return {
       statusCode: 200,
-      headers: { "Content-Type": "text/html; charset=UTF-8" },
+      headers: {
+        "Content-Type": "text/html; charset=UTF-8",
+        "Set-Cookie":
+          "tiktok_oauth_state=; HttpOnly; Secure; SameSite=Lax; Path=/; Max-Age=0"
+      },
       body: `
         <h1>Авторизация TikTok успешна</h1>
-        <p>OAuth code успешно обменян на токены.</p>
-        <p>Open ID получен: ${data.open_id ? "да" : "нет"}</p>
-        <p>Access token получен: ${data.access_token ? "да" : "нет"}</p>
-        <p>Refresh token получен: ${data.refresh_token ? "да" : "нет"}</p>
+        <p>Аккаунт успешно подключён.</p>
+        <p>Open ID сохранён: да</p>
+        <p>Токены сохранены на сервере: да</p>
         <p>Токены не отображаются на этой странице.</p>
       `
     };
@@ -84,7 +118,7 @@ exports.handler = async (event) => {
     return {
       statusCode: 500,
       headers: { "Content-Type": "text/html; charset=UTF-8" },
-      body: `<h1>Server error</h1><p>${error.message}</p>`
+      body: "<h1>Server error</h1><p>Token storage failed.</p>"
     };
   }
 };
