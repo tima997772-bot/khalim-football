@@ -5,7 +5,16 @@ const STORE_NAME = "tiktok-tokens";
 const STATUS_URL =
   "https://open.tiktokapis.com/v2/post/publish/status/fetch/";
 
-function html(body) {
+function escapeHtml(value) {
+  return String(value || "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#039;");
+}
+
+function page(message = "", publishId = "") {
   return `
 <!DOCTYPE html>
 <html lang="ru">
@@ -13,14 +22,26 @@ function html(body) {
 <meta charset="UTF-8">
 <meta name="viewport"
       content="width=device-width, initial-scale=1">
+
 <title>Khalim Football — TikTok Status</title>
 
 <style>
+* {
+  box-sizing: border-box;
+}
+
 body {
-  font-family: -apple-system, BlinkMacSystemFont, sans-serif;
+  font-family:
+    -apple-system,
+    BlinkMacSystemFont,
+    "Segoe UI",
+    sans-serif;
+
   margin: 0;
   padding: 25px;
+
   color: #111;
+  background: #fff;
 }
 
 .container {
@@ -28,11 +49,26 @@ body {
   margin: auto;
 }
 
+h1 {
+  font-size: 38px;
+  margin-bottom: 35px;
+}
+
+h2 {
+  font-size: 30px;
+  margin-bottom: 35px;
+}
+
+label {
+  display: block;
+  font-size: 20px;
+  margin-top: 22px;
+  margin-bottom: 8px;
+}
+
 input {
   width: 100%;
-  box-sizing: border-box;
   padding: 16px;
-  margin-top: 8px;
   border: 1px solid #ddd;
   border-radius: 12px;
   font-size: 17px;
@@ -40,21 +76,28 @@ input {
 
 button {
   width: 100%;
-  padding: 18px;
-  margin-top: 20px;
+  padding: 19px;
+  margin-top: 25px;
+
   border: 0;
-  border-radius: 14px;
-  font-size: 19px;
-  background: #eee;
+  border-radius: 15px;
+
+  font-size: 20px;
+
+  background: #eeeeee;
+  color: #111;
 }
 
-#result {
+.result {
   margin-top: 25px;
-  padding: 20px;
+  padding: 22px;
+
   background: #f3f3f3;
-  border-radius: 12px;
-  font-size: 18px;
-  line-height: 1.5;
+  border-radius: 14px;
+
+  font-size: 19px;
+  line-height: 1.55;
+
   white-space: pre-wrap;
   word-break: break-word;
 }
@@ -69,169 +112,43 @@ button {
 
 <h2>Статус TikTok Upload</h2>
 
-<label>Ключ администратора</label>
+<form method="POST">
+
+<label>
+Ключ администратора
+</label>
 
 <input
-  id="adminKey"
   type="password"
+  name="admin_key"
   placeholder="CONTENT_ADMIN_KEY"
+  required
 >
 
-<label style="display:block;margin-top:20px;">
+<label>
 Publish ID
 </label>
 
 <input
-  id="publishId"
   type="text"
-  value="v_inbox_file~v2.7691829274747177012"
+  name="publish_id"
+  value="${escapeHtml(publishId)}"
+  required
 >
 
-<button onclick="checkStatus()">
+<button type="submit">
 🔍 Проверить статус
 </button>
 
-<div id="result">
-Ожидание...
-</div>
+</form>
 
-</div>
-
-<script>
-
-async function checkStatus() {
-
-  const result =
-    document.getElementById("result");
-
-  const adminKey =
-    document.getElementById("adminKey").value.trim();
-
-  const publishId =
-    document.getElementById("publishId").value.trim();
-
-  if (!adminKey) {
-    result.textContent =
-      "❌ Введите ключ администратора.";
-    return;
-  }
-
-  if (!publishId) {
-    result.textContent =
-      "❌ Введите Publish ID.";
-    return;
-  }
-
-  result.textContent =
-    "⏳ Проверяем статус TikTok...";
-
-  try {
-
-    const response =
-      await fetch(
-        window.location.href,
-        {
-          method: "POST",
-
-          headers: {
-            "Content-Type":
-              "application/json",
-
-            "X-Content-Key":
-              adminKey
-          },
-
-          body: JSON.stringify({
-            publish_id: publishId
-          })
-        }
-      );
-
-    const text =
-      await response.text();
-
-    let data;
-
-    try {
-      data = JSON.parse(text);
-    } catch (e) {
-      throw new Error(
-        "Некорректный ответ сервера:\n" +
-        text
-      );
-    }
-
-    if (!response.ok) {
-      throw new Error(
-        data.error ||
-        "Ошибка проверки статуса."
-      );
-    }
-
-    const status =
-      data.status || "UNKNOWN";
-
-    let message = "";
-
-    if (status === "PROCESSING_UPLOAD") {
-
-      message =
-        "⏳ ВИДЕО ОБРАБАТЫВАЕТСЯ\n\n" +
-        "TikTok получил файл и обрабатывает его.";
-
-    } else if (status === "SEND_TO_USER_INBOX") {
-
-      message =
-        "📥 ВИДЕО ОТПРАВЛЕНО В TIKTOK INBOX\n\n" +
-        "Открой TikTok и проверь уведомление.\n" +
-        "Видео нужно открыть в TikTok и завершить публикацию через редактор.";
-
-    } else if (status === "PUBLISH_COMPLETE") {
-
-      message =
-        "✅ ПУБЛИКАЦИЯ ЗАВЕРШЕНА\n\n" +
-        "TikTok сообщает, что публикация завершена.";
-
-    } else if (status === "FAILED") {
-
-      message =
-        "❌ TIKTOK СООБЩИЛ ОБ ОШИБКЕ\n\n" +
-        "Причина:\n" +
-        (data.fail_reason || "не указана");
-
-    } else {
-
-      message =
-        "ℹ️ СТАТУС: " +
-        status;
-    }
-
-    result.textContent =
-      message +
-      "\n\n" +
-      "Publish ID:\n" +
-      publishId +
-      "\n\n" +
-      "Uploaded bytes:\n" +
-      (data.uploaded_bytes ?? "—") +
-      "\n\n" +
-      "Post ID:\n" +
-      (
-        data.publicaly_available_post_id &&
-        data.publicaly_available_post_id.length
-          ? data.publicaly_available_post_id.join(", ")
-          : "—"
-      );
-
-  } catch (error) {
-
-    result.textContent =
-      "❌ ОШИБКА\n\n" +
-      (error.message || String(error));
-  }
+${
+  message
+    ? `<div class="result">${message}</div>`
+    : `<div class="result">Ожидание...</div>`
 }
 
-</script>
+</div>
 
 </body>
 </html>
@@ -241,17 +158,16 @@ async function checkStatus() {
 
 async function getTikTokToken() {
 
-  const store =
-    getStore(
-      STORE_NAME,
-      {
-        siteID:
-          process.env.SITE_ID,
+  const store = getStore(
+    STORE_NAME,
+    {
+      siteID:
+        process.env.SITE_ID,
 
-        token:
-          process.env.NETLIFY_AUTH_TOKEN
-      }
-    );
+      token:
+        process.env.NETLIFY_AUTH_TOKEN
+    }
+  );
 
   const result =
     await store.list();
@@ -290,283 +206,306 @@ async function getTikTokToken() {
 }
 
 
-exports.handler =
-  async (event) => {
+exports.handler = async (event) => {
 
-    try {
+  try {
 
-      /*
-       * GET
-       */
+    /*
+     * GET
+     */
 
-      if (
-        event.httpMethod === "GET"
-      ) {
-
-        return {
-          statusCode: 200,
-
-          headers: {
-            "Content-Type":
-              "text/html; charset=UTF-8",
-
-            "Cache-Control":
-              "no-cache"
-          },
-
-          body: html("")
-        };
-      }
-
-
-      /*
-       * POST
-       */
-
-      if (
-        event.httpMethod !== "POST"
-      ) {
-
-        return {
-          statusCode: 405,
-
-          headers: {
-            "Content-Type":
-              "application/json"
-          },
-
-          body: JSON.stringify({
-            error:
-              "Method not allowed"
-          })
-        };
-      }
-
-
-      /*
-       * Проверка admin key
-       */
-
-      const providedKey =
-        event.headers["x-content-key"] ||
-        event.headers["X-Content-Key"];
-
-      if (
-        !providedKey ||
-        providedKey !==
-          process.env.CONTENT_ADMIN_KEY
-      ) {
-
-        return {
-          statusCode: 401,
-
-          headers: {
-            "Content-Type":
-              "application/json"
-          },
-
-          body: JSON.stringify({
-            error:
-              "Unauthorized"
-          })
-        };
-      }
-
-
-      /*
-       * JSON
-       */
-
-      let body;
-
-      try {
-
-        body =
-          JSON.parse(
-            event.body || "{}"
-          );
-
-      } catch (error) {
-
-        return {
-          statusCode: 400,
-
-          headers: {
-            "Content-Type":
-              "application/json"
-          },
-
-          body: JSON.stringify({
-            error:
-              "Invalid JSON"
-          })
-        };
-      }
-
-
-      const publishId =
-        String(
-          body.publish_id || ""
-        ).trim();
-
-
-      if (!publishId) {
-
-        return {
-          statusCode: 400,
-
-          headers: {
-            "Content-Type":
-              "application/json"
-          },
-
-          body: JSON.stringify({
-            error:
-              "publish_id is required"
-          })
-        };
-      }
-
-
-      /*
-       * Получаем TikTok access token
-       */
-
-      const accessToken =
-        await getTikTokToken();
-
-
-      /*
-       * Запрос статуса TikTok
-       */
-
-      const response =
-        await fetch(
-          STATUS_URL,
-          {
-            method: "POST",
-
-            headers: {
-              "Authorization":
-                "Bearer " +
-                accessToken,
-
-              "Content-Type":
-                "application/json; charset=UTF-8"
-            },
-
-            body: JSON.stringify({
-              publish_id:
-                publishId
-            })
-          }
-        );
-
-
-      const data =
-        await response.json();
-
-
-      /*
-       * Ошибка TikTok API
-       */
-
-      if (
-        !response.ok ||
-        !data.error ||
-        data.error.code !== "ok"
-      ) {
-
-        return {
-          statusCode:
-            response.status || 400,
-
-          headers: {
-            "Content-Type":
-              "application/json"
-          },
-
-          body: JSON.stringify({
-            success: false,
-
-            error:
-              data.error?.message ||
-              "TikTok status request failed",
-
-            error_code:
-              data.error?.code ||
-              "unknown",
-
-            log_id:
-              data.error?.log_id ||
-              null
-          })
-        };
-      }
-
-
-      /*
-       * Успешный ответ
-       */
+    if (event.httpMethod === "GET") {
 
       return {
         statusCode: 200,
 
         headers: {
           "Content-Type":
-            "application/json",
+            "text/html; charset=UTF-8",
 
           "Cache-Control":
             "no-cache"
         },
 
-        body: JSON.stringify({
-          success: true,
-
-          publish_id:
-            publishId,
-
-          status:
-            data.data?.status ||
-            "UNKNOWN",
-
-          fail_reason:
-            data.data?.fail_reason ||
-            null,
-
-          uploaded_bytes:
-            data.data?.uploaded_bytes ||
-            0,
-
-          publicly_available_post_id:
-            data.data
-              ?.publicaly_available_post_id ||
-            []
-        })
+        body: page(
+          "",
+          "v_inbox_file~v2.7691829274747177012"
+        )
       };
+    }
 
-    } catch (error) {
 
-      console.error(
-        "TikTok status error:",
-        error
-      );
+    /*
+     * POST
+     */
+
+    if (event.httpMethod !== "POST") {
 
       return {
-        statusCode: 500,
+        statusCode: 405,
 
         headers: {
           "Content-Type":
-            "application/json"
+            "text/html; charset=UTF-8"
         },
 
-        body: JSON.stringify({
-          success: false,
-
-          error:
-            error.message ||
-            "Server error"
-        })
+        body: page(
+          "❌ Метод не поддерживается."
+        )
       };
     }
-  };
+
+
+    /*
+     * Получаем обычную HTML-форму.
+     */
+
+    const params =
+      new URLSearchParams(
+        event.body || ""
+      );
+
+    const adminKey =
+      params.get("admin_key") || "";
+
+    const publishId =
+      params.get("publish_id") || "";
+
+
+    /*
+     * Проверяем ключ.
+     */
+
+    if (
+      !adminKey ||
+      adminKey !==
+        process.env.CONTENT_ADMIN_KEY
+    ) {
+
+      return {
+        statusCode: 401,
+
+        headers: {
+          "Content-Type":
+            "text/html; charset=UTF-8"
+        },
+
+        body: page(
+          "❌ Неверный ключ администратора.",
+          publishId
+        )
+      };
+    }
+
+
+    /*
+     * Проверяем Publish ID.
+     */
+
+    if (!publishId) {
+
+      return {
+        statusCode: 400,
+
+        headers: {
+          "Content-Type":
+            "text/html; charset=UTF-8"
+        },
+
+        body: page(
+          "❌ Publish ID не указан.",
+          ""
+        )
+      };
+    }
+
+
+    /*
+     * Получаем TikTok token.
+     */
+
+    const accessToken =
+      await getTikTokToken();
+
+
+    /*
+     * Запрашиваем статус.
+     */
+
+    const response =
+      await fetch(
+        STATUS_URL,
+        {
+          method: "POST",
+
+          headers: {
+            "Authorization":
+              "Bearer " + accessToken,
+
+            "Content-Type":
+              "application/json; charset=UTF-8"
+          },
+
+          body: JSON.stringify({
+            publish_id: publishId
+          })
+        }
+      );
+
+
+    const data =
+      await response.json();
+
+
+    /*
+     * Проверяем ответ TikTok.
+     */
+
+    if (
+      !response.ok ||
+      !data.error ||
+      data.error.code !== "ok"
+    ) {
+
+      const errorText =
+        data.error?.message ||
+        "TikTok не смог вернуть статус.";
+
+      return {
+        statusCode: 200,
+
+        headers: {
+          "Content-Type":
+            "text/html; charset=UTF-8"
+        },
+
+        body: page(
+          "❌ ОШИБКА TIKTOK\n\n" +
+          escapeHtml(errorText) +
+          "\n\nКод: " +
+          escapeHtml(
+            data.error?.code || "unknown"
+          ),
+          publishId
+        )
+      };
+    }
+
+
+    const status =
+      data.data?.status || "UNKNOWN";
+
+    const failReason =
+      data.data?.fail_reason || "";
+
+
+    let resultText = "";
+
+
+    if (
+      status === "PROCESSING_UPLOAD"
+    ) {
+
+      resultText =
+        "⏳ ВИДЕО ОБРАБАТЫВАЕТСЯ\n\n" +
+        "TikTok получил видео и сейчас его обрабатывает.";
+
+    }
+
+    else if (
+      status === "SEND_TO_USER_INBOX"
+    ) {
+
+      resultText =
+        "📥 ВИДЕО ОТПРАВЛЕНО В TIKTOK INBOX\n\n" +
+        "Видео успешно передано TikTok.\n\n" +
+        "Открой TikTok и проверь Inbox/уведомления. " +
+        "Видео необходимо открыть и завершить публикацию через приложение TikTok.";
+
+    }
+
+    else if (
+      status === "PUBLISH_COMPLETE"
+    ) {
+
+      resultText =
+        "✅ ПУБЛИКАЦИЯ ЗАВЕРШЕНА\n\n" +
+        "TikTok сообщает, что публикация завершена.";
+
+    }
+
+    else if (
+      status === "FAILED"
+    ) {
+
+      resultText =
+        "❌ ЗАГРУЗКА НЕ ЗАВЕРШЕНА\n\n" +
+        "Причина:\n" +
+        (failReason || "TikTok не указал причину.");
+
+    }
+
+    else {
+
+      resultText =
+        "ℹ️ ТЕКУЩИЙ СТАТУС\n\n" +
+        status;
+    }
+
+
+    /*
+     * Дополнительная информация.
+     */
+
+    resultText +=
+      "\n\n" +
+      "Publish ID:\n" +
+      escapeHtml(publishId) +
+      "\n\n" +
+      "Статус TikTok:\n" +
+      escapeHtml(status);
+
+
+    return {
+      statusCode: 200,
+
+      headers: {
+        "Content-Type":
+          "text/html; charset=UTF-8",
+
+        "Cache-Control":
+          "no-cache"
+      },
+
+      body: page(
+        resultText,
+        publishId
+      )
+    };
+
+
+  } catch (error) {
+
+    console.error(
+      "TikTok status error:",
+      error
+    );
+
+    return {
+      statusCode: 500,
+
+      headers: {
+        "Content-Type":
+          "text/html; charset=UTF-8"
+      },
+
+      body: page(
+        "❌ ОШИБКА СЕРВЕРА\n\n" +
+        escapeHtml(
+          error.message ||
+          "Unknown error"
+        )
+      )
+    };
+  }
+};
