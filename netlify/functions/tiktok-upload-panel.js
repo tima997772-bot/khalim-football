@@ -1,605 +1,636 @@
 const { getStore } = require("@netlify/blobs");
 
-exports.handler = async (event) => {
-  try {
-    // =========================
-    // GET — показываем панель
-    // =========================
+const html = `
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Khalim Football — TikTok Upload</title>
 
-    if (event.httpMethod === "GET") {
-      return page();
+<style>
+body {
+  font-family: -apple-system, BlinkMacSystemFont, Arial, sans-serif;
+  max-width: 620px;
+  margin: 30px auto;
+  padding: 20px;
+  background: #f5f5f7;
+}
+
+.card {
+  background: white;
+  padding: 22px;
+  border-radius: 18px;
+  box-shadow: 0 4px 20px rgba(0,0,0,.08);
+}
+
+h1 {
+  margin-top: 0;
+}
+
+input,
+button {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 14px;
+  margin-top: 12px;
+  border-radius: 10px;
+  border: 1px solid #ccc;
+  font-size: 16px;
+}
+
+button {
+  background: #111;
+  color: white;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+button:disabled {
+  opacity: .5;
+}
+
+#result {
+  margin-top: 20px;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+</style>
+</head>
+
+<body>
+
+<div class="card">
+
+<h1>🎬 Khalim Football</h1>
+
+<h2>Реальная загрузка видео в TikTok</h2>
+
+<p>
+Выберите видео MP4/MOV/WebM.
+Максимальный размер этого тестового маршрута — около 4,5 МБ.
+</p>
+
+<input
+  id="video"
+  type="file"
+  accept="video/mp4,video/quicktime,video/webm"
+>
+
+<input
+  id="adminKey"
+  type="password"
+  placeholder="Введите CONTENT_ADMIN_KEY"
+>
+
+<button id="uploadButton">
+🚀 Загрузить в TikTok
+</button>
+
+<div id="result"></div>
+
+</div>
+
+<script>
+
+const button = document.getElementById("uploadButton");
+const result = document.getElementById("result");
+
+button.addEventListener("click", async () => {
+
+  const fileInput = document.getElementById("video");
+  const keyInput = document.getElementById("adminKey");
+
+  const file = fileInput.files[0];
+  const adminKey = keyInput.value;
+
+  if (!file) {
+    result.textContent = "❌ Сначала выберите видео.";
+    return;
+  }
+
+  if (!adminKey) {
+    result.textContent = "❌ Введите CONTENT_ADMIN_KEY.";
+    return;
+  }
+
+  if (file.size > 4.5 * 1024 * 1024) {
+    result.textContent =
+      "❌ Файл слишком большой для этого теста. " +
+      "Максимум около 4,5 МБ.";
+    return;
+  }
+
+  button.disabled = true;
+  result.textContent =
+    "⏳ Подготавливаю видео и подключаюсь к TikTok...";
+
+  try {
+
+    const response = await fetch(window.location.href, {
+      method: "POST",
+
+      headers: {
+        "Content-Type": file.type || "video/mp4",
+        "X-Content-Key": adminKey,
+        "X-Video-Name": file.name
+      },
+
+      body: file
+    });
+
+    const text = await response.text();
+
+    result.innerHTML = text;
+
+  } catch (error) {
+
+    result.textContent =
+      "❌ Ошибка соединения:\n" +
+      error.message;
+
+  } finally {
+
+    button.disabled = false;
+
+  }
+
+});
+
+</script>
+
+</body>
+</html>
+`;
+
+exports.handler = async (event) => {
+
+  /*
+   * Открытие страницы
+   */
+
+  if (event.httpMethod === "GET") {
+
+    return {
+      statusCode: 200,
+
+      headers: {
+        "Content-Type": "text/html; charset=UTF-8"
+      },
+
+      body: html
+    };
+  }
+
+  /*
+   * Только POST для загрузки видео
+   */
+
+  if (event.httpMethod !== "POST") {
+
+    return {
+      statusCode: 405,
+      headers: {
+        "Content-Type": "text/plain; charset=UTF-8"
+      },
+      body: "Method not allowed. Use GET or POST."
+    };
+  }
+
+  /*
+   * Проверяем администратора
+   */
+
+  const adminKey = process.env.CONTENT_ADMIN_KEY;
+
+  const providedKey =
+    event.headers["x-content-key"] ||
+    event.headers["X-Content-Key"];
+
+  if (!adminKey) {
+
+    return {
+      statusCode: 500,
+      body: "CONTENT_ADMIN_KEY is not configured"
+    };
+  }
+
+  if (providedKey !== adminKey) {
+
+    return {
+      statusCode: 401,
+      body: "Unauthorized"
+    };
+  }
+
+  /*
+   * Проверяем тело запроса
+   */
+
+  if (!event.body) {
+
+    return {
+      statusCode: 400,
+      body: "Video body is empty."
+    };
+  }
+
+  /*
+   * Netlify передает binary body в Base64.
+   */
+
+  const video = Buffer.from(
+    event.body,
+    event.isBase64Encoded ? "base64" : "utf8"
+  );
+
+  const videoSize = video.length;
+
+  /*
+   * Безопасный лимит для текущего теста.
+   */
+
+  const MAX_SIZE = 4.5 * 1024 * 1024;
+
+  if (videoSize > MAX_SIZE) {
+
+    return {
+      statusCode: 413,
+
+      headers: {
+        "Content-Type": "text/html; charset=UTF-8"
+      },
+
+      body: `
+        <h2>❌ Видео слишком большое</h2>
+        <p>
+          Размер файла:
+          ${(videoSize / 1024 / 1024).toFixed(2)} MB
+        </p>
+        <p>
+          Для этого тестового маршрута максимум около 4,5 MB.
+        </p>
+      `
+    };
+  }
+
+  /*
+   * Тип видео
+   */
+
+  const contentType =
+    event.headers["content-type"] ||
+    event.headers["Content-Type"] ||
+    "video/mp4";
+
+  const allowedTypes = [
+    "video/mp4",
+    "video/quicktime",
+    "video/webm"
+  ];
+
+  if (!allowedTypes.includes(contentType)) {
+
+    return {
+      statusCode: 400,
+
+      headers: {
+        "Content-Type": "text/html; charset=UTF-8"
+      },
+
+      body: `
+        <h2>❌ Неподдерживаемый формат</h2>
+        <p>Используйте MP4, MOV или WebM.</p>
+      `
+    };
+  }
+
+  try {
+
+    /*
+     * Получаем TikTok token
+     */
+
+    const store = getStore("tiktok-tokens", {
+      siteID: process.env.SITE_ID,
+      token: process.env.NETLIFY_AUTH_TOKEN
+    });
+
+    const list = await store.list();
+
+    let tokenData = null;
+
+    if (list && Array.isArray(list.blobs)) {
+
+      const tokenBlob = list.blobs.find(
+        blob => blob.key.startsWith("user-")
+      );
+
+      if (tokenBlob) {
+
+        tokenData = await store.get(
+          tokenBlob.key,
+          {
+            type: "json"
+          }
+        );
+      }
     }
 
-    // =========================
-    // POST — запускаем тест
-    // =========================
+    if (!tokenData || !tokenData.access_token) {
 
-    if (event.httpMethod !== "POST") {
       return {
-        statusCode: 405,
+        statusCode: 401,
+
         headers: {
-          "Content-Type": "text/plain; charset=UTF-8"
+          "Content-Type": "text/html; charset=UTF-8"
         },
-        body: "Method not allowed"
+
+        body: `
+          <h2>❌ TikTok не подключён</h2>
+          <p>Access token не найден.</p>
+          <p>Сначала выполните авторизацию TikTok.</p>
+        `
       };
     }
 
-    // Получаем CONTENT_ADMIN_KEY
-    // из обычной HTML-формы
-    const body = new URLSearchParams(
-      event.body || ""
-    );
+    /*
+     * 1. Инициализация загрузки
+     */
 
-    const providedKey =
-      body.get("admin_key");
-
-    const adminKey =
-      process.env.CONTENT_ADMIN_KEY;
-
-    if (
-      !adminKey ||
-      providedKey !== adminKey
-    ) {
-      return resultPage(
-        false,
-        "Неверный CONTENT_ADMIN_KEY."
-      );
-    }
-
-    // =========================
-    // Получаем TikTok token
-    // =========================
-
-    const store = getStore(
-      "tiktok-tokens",
-      {
-        siteID:
-          process.env.SITE_ID,
-
-        token:
-          process.env.NETLIFY_AUTH_TOKEN
-      }
-    );
-
-    const keys =
-      await store.list();
-
-    if (
-      !keys.blobs ||
-      keys.blobs.length === 0
-    ) {
-      return resultPage(
-        false,
-        "TikTok аккаунт не подключён."
-      );
-    }
-
-    const tokenData =
-      await store.get(
-        keys.blobs[0].key,
-        {
-          type: "json"
-        }
-      );
-
-    if (
-      !tokenData ||
-      !tokenData.access_token
-    ) {
-      return resultPage(
-        false,
-        "TikTok access token не найден."
-      );
-    }
-
-    // =========================
-    // TikTok Upload API
-    // =========================
-
-    const response = await fetch(
+    const initResponse = await fetch(
       "https://open.tiktokapis.com/v2/post/publish/inbox/video/init/",
       {
         method: "POST",
 
         headers: {
-          Authorization:
-            `Bearer ${tokenData.access_token}`,
+          "Authorization":
+            "Bearer " + tokenData.access_token,
 
           "Content-Type":
             "application/json; charset=UTF-8"
         },
 
         body: JSON.stringify({
+
           source_info: {
-            source:
-              "FILE_UPLOAD",
 
-            video_size:
-              4000000,
+            source: "FILE_UPLOAD",
 
-            chunk_size:
-              4000000,
+            video_size: videoSize,
 
-            total_chunk_count:
-              1
+            chunk_size: videoSize,
+
+            total_chunk_count: 1
+
           }
+
         })
       }
     );
 
-    const data =
-      await response.json();
-
-    // =========================
-    // Ошибка TikTok
-    // =========================
+    const initData = await initResponse.json();
 
     if (
-      !response.ok ||
-      data.error?.code !== "ok"
+      !initResponse.ok ||
+      !initData.data ||
+      !initData.data.upload_url
     ) {
-      return resultPage(
-        false,
-        `TikTok API error
 
-Код:
-${data.error?.code || "unknown_error"}
+      return {
+        statusCode: 400,
 
-Сообщение:
-${data.error?.message || "Неизвестная ошибка"}
+        headers: {
+          "Content-Type":
+            "application/json; charset=UTF-8"
+        },
 
-Log ID:
-${data.error?.log_id || "—"}`
-      );
+        body: JSON.stringify({
+          step: "TikTok initialization",
+          response: initData
+        }, null, 2)
+      };
     }
 
-    // =========================
-    // УСПЕШНЫЙ ТЕСТ
-    // =========================
-
     const publishId =
-      data.data?.publish_id ||
-      null;
+      initData.data.publish_id;
 
     const uploadUrl =
-      data.data?.upload_url ||
-      null;
+      initData.data.upload_url;
 
-    return resultPage(
-      true,
-      `TikTok Upload API работает.
+    /*
+     * 2. Отправляем настоящее видео
+     */
 
-publish_id:
-${publishId || "не получен"}
+    const uploadResponse = await fetch(
+      uploadUrl,
+      {
+        method: "PUT",
 
-upload_url получен:
-${uploadUrl ? "ДА" : "НЕТ"}
+        headers: {
 
-Scope:
-video.upload
+          "Content-Type": contentType,
 
-Видео НЕ загружено.
-Видео НЕ опубликовано.`
+          "Content-Length":
+            String(videoSize),
+
+          "Content-Range":
+            `bytes 0-${videoSize - 1}/${videoSize}`
+
+        },
+
+        body: video
+      }
     );
+
+    const uploadResponseText =
+      await uploadResponse.text();
+
+    if (!uploadResponse.ok) {
+
+      return {
+        statusCode: 400,
+
+        headers: {
+          "Content-Type":
+            "text/html; charset=UTF-8"
+        },
+
+        body: `
+          <h2>❌ Ошибка загрузки TikTok</h2>
+
+          <p>
+            HTTP:
+            ${uploadResponse.status}
+          </p>
+
+          <p>
+            publish_id:
+            ${publishId}
+          </p>
+
+          <pre>
+${escapeHtml(uploadResponseText)}
+          </pre>
+        `
+      };
+    }
+
+    /*
+     * 3. Проверяем статус
+     */
+
+    let statusData = null;
+
+    try {
+
+      const statusResponse =
+        await fetch(
+          "https://open.tiktokapis.com/v2/post/publish/status/fetch/",
+          {
+            method: "POST",
+
+            headers: {
+
+              "Authorization":
+                "Bearer " + tokenData.access_token,
+
+              "Content-Type":
+                "application/json; charset=UTF-8"
+
+            },
+
+            body: JSON.stringify({
+              publish_id: publishId
+            })
+          }
+        );
+
+      statusData =
+        await statusResponse.json();
+
+    } catch (statusError) {
+
+      statusData = {
+        error:
+          statusError.message
+      };
+    }
+
+    /*
+     * Успешный результат
+     */
+
+    const fileName =
+      event.headers["x-video-name"] ||
+      event.headers["X-Video-Name"] ||
+      "video";
+
+    return {
+
+      statusCode: 200,
+
+      headers: {
+        "Content-Type":
+          "text/html; charset=UTF-8"
+      },
+
+      body: `
+
+        <div style="
+          font-family:-apple-system,BlinkMacSystemFont,Arial;
+          padding:20px;
+        ">
+
+        <h2>✅ Видео успешно передано TikTok</h2>
+
+        <p>
+          <b>Файл:</b>
+          ${escapeHtml(fileName)}
+        </p>
+
+        <p>
+          <b>Размер:</b>
+          ${(videoSize / 1024 / 1024).toFixed(2)} MB
+        </p>
+
+        <p>
+          <b>publish_id:</b><br>
+          ${escapeHtml(publishId)}
+        </p>
+
+        <p>
+          <b>TikTok Upload:</b>
+          HTTP ${uploadResponse.status}
+        </p>
+
+        <hr>
+
+        <h3>Статус TikTok</h3>
+
+        <pre style="
+          white-space:pre-wrap;
+          word-break:break-word;
+          background:#f5f5f5;
+          padding:15px;
+          border-radius:10px;
+        ">${escapeHtml(
+          JSON.stringify(statusData, null, 2)
+        )}</pre>
+
+        <p>
+          Видео передано в TikTok через
+          <b>video.upload</b>.
+        </p>
+
+        <p>
+          Для этого режима TikTok использует
+          Inbox/Draft flow: окончательное оформление
+          публикации выполняется в TikTok.
+        </p>
+
+        </div>
+
+      `
+    };
 
   } catch (error) {
 
     console.error(error);
 
-    return resultPage(
-      false,
-      `Ошибка сервера:
+    return {
 
-${error.message || "Unknown error"}`
-    );
+      statusCode: 500,
+
+      headers: {
+        "Content-Type":
+          "text/html; charset=UTF-8"
+      },
+
+      body: `
+        <h2>❌ Ошибка сервера</h2>
+
+        <p>
+          ${escapeHtml(
+            error.message || "Unknown error"
+          )}
+        </p>
+      `
+    };
   }
 };
 
 
-// ========================================
-// Главная страница
-// ========================================
-
-function page() {
-
-  return {
-    statusCode: 200,
-
-    headers: {
-      "Content-Type":
-        "text/html; charset=UTF-8",
-
-      "Cache-Control":
-        "no-store"
-    },
-
-    body: `
-<!DOCTYPE html>
-
-<html lang="ru">
-
-<head>
-
-<meta charset="UTF-8">
-
-<meta
-  name="viewport"
-  content="width=device-width, initial-scale=1"
-/>
-
-<title>
-Khalim Football — TikTok Upload Test
-</title>
-
-<style>
-
-* {
-  box-sizing: border-box;
-}
-
-body {
-  margin: 0;
-  padding: 18px;
-
-  background:
-    radial-gradient(
-      circle at top,
-      #202020,
-      #080808
-    );
-
-  color: #fff;
-
-  font-family:
-    -apple-system,
-    BlinkMacSystemFont,
-    "Segoe UI",
-    Arial,
-    sans-serif;
-}
-
-.container {
-  max-width: 700px;
-  margin: auto;
-}
-
-.card {
-  background: #1c1c1c;
-
-  border:
-    1px solid #303030;
-
-  border-radius: 22px;
-
-  padding: 22px;
-
-  margin-bottom: 18px;
-}
-
-h1 {
-  margin: 0 0 8px;
-
-  font-size: 28px;
-}
-
-h2 {
-  margin:
-    0 0 16px;
-
-  font-size: 21px;
-}
-
-p {
-  color: #aaa;
-
-  line-height: 1.5;
-}
-
-input {
-  width: 100%;
-
-  padding: 16px;
-
-  margin-top: 10px;
-
-  border-radius: 12px;
-
-  border:
-    1px solid #444;
-
-  background: #111;
-
-  color: white;
-
-  font-size: 16px;
-
-  outline: none;
-}
-
-button {
-  width: 100%;
-
-  margin-top: 16px;
-
-  padding: 17px;
-
-  border: none;
-
-  border-radius: 14px;
-
-  background: #16803a;
-
-  color: white;
-
-  font-size: 17px;
-
-  font-weight: 800;
-}
-
-.warning {
-  margin-top: 18px;
-
-  padding: 15px;
-
-  border-radius: 14px;
-
-  background: #302900;
-
-  color: #ffd84d;
-
-  line-height: 1.5;
-}
-
-</style>
-
-</head>
-
-<body>
-
-<div class="container">
-
-  <div class="card">
-
-    <h1>
-      ⚽ Khalim Football
-    </h1>
-
-    <h2>
-      TikTok Upload Test
-    </h2>
-
-    <p>
-      Проверяем возможность
-      инициализировать загрузку видео
-      через официальный TikTok API.
-    </p>
-
-    <div class="warning">
-      ⚠️ Этот тест не загружает видео
-      и не публикует его.
-    </div>
-
-  </div>
-
-  <div class="card">
-
-    <h2>
-      🔐 Авторизация
-    </h2>
-
-    <form
-      method="POST"
-      action=""
-    >
-
-      <input
-        type="password"
-        name="admin_key"
-        placeholder="Введите CONTENT_ADMIN_KEY"
-        autocomplete="off"
-        required
-      />
-
-      <button type="submit">
-        🚀 Проверить TikTok Upload API
-      </button>
-
-    </form>
-
-  </div>
-
-</div>
-
-</body>
-
-</html>
-`
-  };
-}
-
-
-// ========================================
-// Страница результата
-// ========================================
-
-function resultPage(
-  success,
-  message
-) {
-
-  return {
-    statusCode:
-      success ? 200 : 400,
-
-    headers: {
-      "Content-Type":
-        "text/html; charset=UTF-8",
-
-      "Cache-Control":
-        "no-store"
-    },
-
-    body: `
-<!DOCTYPE html>
-
-<html lang="ru">
-
-<head>
-
-<meta charset="UTF-8">
-
-<meta
-  name="viewport"
-  content="width=device-width, initial-scale=1"
-/>
-
-<title>
-Khalim Football — Result
-</title>
-
-<style>
-
-body {
-  margin: 0;
-  padding: 20px;
-
-  background: #090909;
-
-  color: white;
-
-  font-family:
-    -apple-system,
-    BlinkMacSystemFont,
-    "Segoe UI",
-    Arial,
-    sans-serif;
-}
-
-.container {
-  max-width: 700px;
-
-  margin: auto;
-}
-
-.card {
-  background: #1c1c1c;
-
-  border-radius: 22px;
-
-  padding: 24px;
-
-  border:
-    1px solid
-    ${success ? "#267a40" : "#8b3030"};
-}
-
-h1 {
-  margin-top: 0;
-
-  font-size: 26px;
-
-  color:
-    ${success ? "#45e878" : "#ff6565"};
-}
-
-pre {
-  white-space: pre-wrap;
-
-  word-break: break-word;
-
-  line-height: 1.6;
-
-  font-size: 15px;
-}
-
-a {
-  display: block;
-
-  margin-top: 22px;
-
-  padding: 15px;
-
-  text-align: center;
-
-  border-radius: 14px;
-
-  background: #292929;
-
-  color: white;
-
-  text-decoration: none;
-
-  font-weight: 700;
-}
-
-</style>
-
-</head>
-
-<body>
-
-<div class="container">
-
-  <div class="card">
-
-    <h1>
-      ${success
-        ? "✅ Тест успешен"
-        : "❌ Тест завершился ошибкой"}
-    </h1>
-
-    <pre>${escapeHtml(
-      message
-    )}</pre>
-
-    <a
-      href="/.netlify/functions/tiktok-upload-panel"
-    >
-      ← Вернуться к тесту
-    </a>
-
-  </div>
-
-</div>
-
-</body>
-
-</html>
-`
-  };
-}
-
-
-// ========================================
-// Безопасный HTML
-// ========================================
+/*
+ * Безопасный вывод текста в HTML
+ */
 
 function escapeHtml(value) {
 
   return String(value)
-
-    .replace(
-      /&/g,
-      "&amp;"
-    )
-
-    .replace(
-      /</g,
-      "&lt;"
-    )
-
-    .replace(
-      />/g,
-      "&gt;"
-    )
-
-    .replace(
-      /"/g,
-      "&quot;"
-    )
-
-    .replace(
-      /'/g,
-      "&#039;"
-    );
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#039;");
 }
