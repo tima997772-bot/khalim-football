@@ -6,7 +6,9 @@ exports.handler = async (event) => {
   if (params.error) {
     return {
       statusCode: 400,
-      headers: { "Content-Type": "text/html; charset=UTF-8" },
+      headers: {
+        "Content-Type": "text/html; charset=UTF-8"
+      },
       body: `<h1>TikTok authorization error</h1><p>${params.error}</p>`
     };
   }
@@ -14,7 +16,9 @@ exports.handler = async (event) => {
   if (!params.code) {
     return {
       statusCode: 400,
-      headers: { "Content-Type": "text/html; charset=UTF-8" },
+      headers: {
+        "Content-Type": "text/html; charset=UTF-8"
+      },
       body: "<h1>TikTok OAuth callback</h1><p>Authorization code was not provided.</p>"
     };
   }
@@ -27,13 +31,15 @@ exports.handler = async (event) => {
     .find((item) => item.startsWith("tiktok_oauth_state="));
 
   const savedState = stateCookie
-    ? decodeURIComponent(stateCookie.split("=")[1])
+    ? decodeURIComponent(stateCookie.substring("tiktok_oauth_state=".length))
     : null;
 
   if (!params.state || !savedState || params.state !== savedState) {
     return {
       statusCode: 400,
-      headers: { "Content-Type": "text/html; charset=UTF-8" },
+      headers: {
+        "Content-Type": "text/html; charset=UTF-8"
+      },
       body: "<h1>OAuth security error</h1><p>Invalid OAuth state.</p>"
     };
   }
@@ -47,7 +53,9 @@ exports.handler = async (event) => {
   if (!clientKey || !clientSecret) {
     return {
       statusCode: 500,
-      headers: { "Content-Type": "text/html; charset=UTF-8" },
+      headers: {
+        "Content-Type": "text/html; charset=UTF-8"
+      },
       body: "<h1>Server configuration error</h1><p>TikTok credentials are not configured.</p>"
     };
   }
@@ -78,7 +86,9 @@ exports.handler = async (event) => {
     if (!response.ok || data.error) {
       return {
         statusCode: 400,
-        headers: { "Content-Type": "text/html; charset=UTF-8" },
+        headers: {
+          "Content-Type": "text/html; charset=UTF-8"
+        },
         body: `
           <h1>TikTok token exchange error</h1>
           <p>${data.error || "unknown_error"}</p>
@@ -114,7 +124,7 @@ exports.handler = async (event) => {
         <p>Токены не отображаются на этой странице.</p>
       `
     };
-    } catch (error) {
+  } catch (error) {
     console.error("Token storage error:", error);
 
     return {
@@ -122,6 +132,11 @@ exports.handler = async (event) => {
       headers: {
         "Content-Type": "text/html; charset=UTF-8"
       },
-      body: `<h1>Server error</h1><p>Token storage failed.</p><p>${error.message || "Unknown error"}</p>`
+      body: `
+        <h1>Server error</h1>
+        <p>Token storage failed.</p>
+        <p>${error.message || "Unknown error"}</p>
+      `
     };
   }
+};
